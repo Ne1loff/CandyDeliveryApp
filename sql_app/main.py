@@ -64,7 +64,7 @@ def get_full_courier(courier_id: int, db: Session = Depends(get_db)):
     db_courier = crud.get_courier_by_id(db, courier_id=courier_id)
     if db_courier is None:
         raise HTTPException(status_code=404, detail="Courier not found")
-    return db_courier  # dict_
+    return db_courier
 
 
 @app.get('/orders/{order_id}', response_model=schemas.Order)
@@ -81,13 +81,30 @@ def create_order(data: Dict[str, List[schemas.OrderDto]], db: Session = Depends(
     return {"orders": created_orders}
 
 
-@app.post('/orders/assign', status_code=200, response_model=schemas.AssignOrder)
+@app.post('/orders/assign', status_code=200, response_model=dict)  # TODO:Make the function idempotent
 def assign_order(courier: Dict[str, int], db: Session = Depends(get_db)):
-    return schemas.AssignOrder(orders=crud.assign_order(db, crud.get_courier_by_id(db, courier.get("courier_id"))))
+    assigned_orders = []
+    orders, assign_time = crud.assign_order(db, crud.get_courier_by_id(db, courier.get("courier_id")))
+    for order in orders:
+        assigned_orders.append({"id": order.id})
+
+    if assigned_orders:
+        dict_ = {
+            "orders": assigned_orders,
+            "assign_time": assign_time
+        }
+    else:
+        dict_ = {
+            "orders": assigned_orders
+        }
+    return dict_
 
 
-# @app.patch('/couriers/{courier_id}', status_code=200, response_model=schemas.CourierDto)
-# def update_courier(db: Session = Depends(get_db)):
+@app.patch('/couriers/{courier_id}', status_code=200, response_model=schemas.CourierDto)
+def update_courier(courier_id: int, changes: Dict, db: Session = Depends(get_db)):
+    courier_dto = crud.update_courier(db, changes, courier_id)
+    crud.check_courier(db, courier_id)
+    return courier_dto
 
 
 if __name__ == "__main__":

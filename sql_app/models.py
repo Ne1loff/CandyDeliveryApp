@@ -43,7 +43,7 @@ class Order(Base):
     id = Column('order_id', Integer, primary_key=True, nullable=False, index=True)
     weight = Column('order_weight', Numeric, nullable=False)
     region_id = Column('order_region_id', Integer, nullable=False)
-    courier_id = Column('order_courier_id', Integer)
+    courier_id = Column('order_courier_id', Integer, default=-1)
     assign_time = Column('assign_time', DATETIME)
 
     delivery_hours = relationship("OrderDeliveryHours", back_populates="order")

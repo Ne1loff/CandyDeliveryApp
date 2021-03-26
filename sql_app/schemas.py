@@ -19,8 +19,11 @@ class CourierWorkingHours(BaseModel):
 class CourierDto(BaseModel):
     courier_id: int
     courier_type: str
-    regions: List[int] = []
-    working_hours: List[str] = []
+    regions: List[int]
+    working_hours: List[str]
+
+    class Config:
+        orm_mode = True
 
 
 class Courier(CourierDto):
@@ -50,13 +53,9 @@ class OrderDto(BaseModel):
         return w
 
 
-class AssignOrder(BaseModel):
-    orders: List[Dict[str, int]]
-    assign_time: datetime
-
-
 class Order(OrderDto):
     courier_id: int
+    assign_time: datetime
 
     class Config:
         orm_mode = True
