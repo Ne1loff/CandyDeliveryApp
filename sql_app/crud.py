@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
+import dateutil.parser
 
 from . import models, schemas
 
@@ -43,10 +44,6 @@ def get_working_hours_by_courier_id(db: Session, courier_id: int):
     for w_h in db_w_h:
         working_hours.append(w_h.courier_working_hours)
     return working_hours
-
-
-def get_order_by_order_id(db: Session, order_id: int):
-    return db.query(models.Order).filter(models.Order.id == order_id).first()
 
 
 def get_orders_by_working_hours(db: Session, working_hours: List[str], orders_id: List[int]):
@@ -166,7 +163,7 @@ def assign_order(db: Session, courier: schemas.Courier):
     for order in suitable_orders:
         db_order = db.query(models.Order).get(order.id)
         db_order.courier_id = courier.courier_id
-        print(db_order.courier_id)
+        db_order.courier_type = courier.courier_type
         db_order.assign_time = now
         db.commit()
     return suitable_orders, assign_time
@@ -291,3 +288,107 @@ def convert_to_minute(time: str):
     end = (int(time[6]) * 10 + int(time[7])) * 60
     end += int(time[9]) * 10 + int(time[10])
     return begin, end
+
+
+def create_completed_courier_order(
+        db: Session,
+        courier_id: int,
+        order_id: int,
+        complete_time_g: datetime,
+        order_region: int
+):
+    completed_orders = db.query(models.CompletedCourierOrder) \
+        .filter(models.CompletedCourierOrder.courier_id == courier_id) \
+        .filter(models.CompletedCourierOrder.order_region == order_region) \
+        .all()
+    last_completed_order = []
+    if completed_orders:
+        for order in completed_orders:
+            last_completed_order.append(order.order_number)
+        last_completed_order = list(set(last_completed_order))[-1]
+    else:
+        last_completed_order = 0
+
+    if last_completed_order == 0:
+        db_order = db.query(models.Order).get(order_id)
+        completion_time = db_order.assign_time
+    else:
+        db_last_completed_order = db.query(models.CompletedCourierOrder) \
+            .filter(models.CompletedCourierOrder.order_number == last_completed_order) \
+            .first()
+        completion_time = db_last_completed_order.complete_time
+
+    complete_time = complete_time_g.strftime('%Y-%m-%dT%H:%M:%S')
+    completion_time = completion_time.strftime('%Y-%m-%dT%H:%M:%S')
+    complete_time_s = dateutil.parser.parse(complete_time)
+    completion_time_s = dateutil.parser.parse(completion_time)
+
+    lead_time = int((complete_time_s - completion_time_s).total_seconds())
+
+    db_completed_courier_order = models.CompletedCourierOrder(
+        courier_id=courier_id,
+        order_id=order_id,
+        order_number=last_completed_order + 1,
+        complete_time=complete_time_g,
+        lead_time=lead_time,
+        order_region=order_region
+    )
+    db.add(db_completed_courier_order)
+    db.commit()
+
+
+def order_complete(db: Session, order_info: dict):
+    order_id = order_info.get("order_id")
+    complete_time = order_info.get("complete_time")
+    courier_id = order_info.get("courier_id")
+
+    db_order = db.query(models.Order).get(order_id)
+
+    complete_time_dt = dateutil.parser.parse(complete_time)
+
+    create_completed_courier_order(
+        db, courier_id, order_id,
+        complete_time_dt,
+        db_order.region_id
+    )
+    earning_ratio = db_order.courier_type
+    if earning_ratio == "foot":
+        earning_ratio = 2
+    elif earning_ratio == "bike":
+        earning_ratio = 5
+    else:
+        earning_ratio = 9
+
+    calculate_courier_rating_earning(db, courier_id, earning_ratio)
+
+    return order_id
+
+
+def calculate_courier_rating_earning(db: Session, courier_id: int, earning_ratio: int):
+    db_courier = db.query(models.Courier).get(courier_id)
+    db_all_completed_orders = db.query(models.CompletedCourierOrder) \
+        .filter(models.CompletedCourierOrder.courier_id == courier_id) \
+        .all()
+
+    all_regions = []
+    for completed_order in db_all_completed_orders:
+        all_regions.append(completed_order.order_region)
+    all_regions = list(set(all_regions))
+    average_lead_time_in_regions = []
+    for region in all_regions:
+        db_completed_orders = db.query(models.CompletedCourierOrder) \
+            .filter(models.CompletedCourierOrder.order_region == region) \
+            .all()
+        average_lead_time = 0
+        count = 0
+        for order in db_completed_orders:
+            average_lead_time += order.lead_time
+            count += 1
+        average_lead_time /= count
+        average_lead_time_in_regions.append(average_lead_time)
+
+    t = min(average_lead_time_in_regions)
+    rating = ((60 * 60 - min(t, 60 * 60)) / (60 * 60)) * 5
+    db_courier.rating = float(format(rating, ".2f"))
+    db_courier.earning += 500 * earning_ratio
+    db.commit()

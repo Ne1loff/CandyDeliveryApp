@@ -67,11 +67,6 @@ def get_full_courier(courier_id: int, db: Session = Depends(get_db)):
     return db_courier
 
 
-@app.get('/orders/{order_id}', response_model=schemas.Order)
-def get_full_courier(order_id: int, db: Session = Depends(get_db)):
-    return crud.get_order_by_order_id(db, order_id)
-
-
 @app.post('/orders', status_code=201, response_model=dict)
 def create_order(data: Dict[str, List[schemas.OrderDto]], db: Session = Depends(get_db)):
     created_orders = []
@@ -105,6 +100,14 @@ def update_courier(courier_id: int, changes: Dict, db: Session = Depends(get_db)
     courier_dto = crud.update_courier(db, changes, courier_id)
     crud.check_courier(db, courier_id)
     return courier_dto
+
+
+@app.post('/orders/complete', status_code=200, response_model=dict)
+def order_complete(order_info: Dict, db: Session = Depends(get_db)):
+    order_id = crud.order_complete(db, order_info)
+    if order_id is None:
+        raise HTTPException(status_code=400, detail="Bad request")
+    return {"order_id": order_id}
 
 
 if __name__ == "__main__":
