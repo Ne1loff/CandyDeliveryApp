@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import List, Dict
+from typing import List
 
-from pydantic import BaseModel, validator, ValidationError
+from pydantic import BaseModel, validator
 
 
 class CourierRegion(BaseModel):
@@ -24,6 +24,12 @@ class CourierDto(BaseModel):
 
     class Config:
         orm_mode = True
+
+    @validator('courier_type')
+    def invalid_courier_type(cls, courier_type):
+        if courier_type not in ["foot", "bike", "car"]:
+            raise ValueError
+        return courier_type
 
 
 class Courier(CourierDto):
@@ -51,6 +57,12 @@ class OrderDto(BaseModel):
         if w < 0.01 or w > 50.0:
             raise ValueError
         return w
+
+    # @validator('region')
+    # def invalid_weight(cls, w):
+    #     if isinstance(w, int):
+    #         raise ValueError
+    #     return w
 
 
 class Order(OrderDto):

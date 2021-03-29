@@ -139,7 +139,17 @@ def assign_order(db: Session, courier: schemas.Courier):
 
     suitable_orders = []
 
-    print(db.query(models.Order).filter(models.Order.region_id == 1).first().courier_id)
+    assigned_orders = db.query(models.Order).filter(models.Order.courier_id == courier.courier_id).all()
+    completed_orders = db.query(models.CompletedCourierOrder) \
+        .filter(models.CompletedCourierOrder.courier_id == courier.courier_id) \
+        .all()
+
+    assigned_orders_id = []
+    completed_orders_id = []
+    for order in assigned_orders:
+        assigned_orders_id.append(order.id)
+    for order in completed_orders:
+        completed_orders_id.append(order.order_id)
 
     list_by_weight = get_orders_weighing_less_than(db, weight)
     if list_by_weight:
@@ -159,13 +169,30 @@ def assign_order(db: Session, courier: schemas.Courier):
 
     now = datetime.now()
     assign_time = now.isoformat()
-    print(assign_time)
+    change_assign_time = True
     for order in suitable_orders:
         db_order = db.query(models.Order).get(order.id)
         db_order.courier_id = courier.courier_id
         db_order.courier_type = courier.courier_type
         db_order.assign_time = now
         db.commit()
+        change_assign_time = False
+
+    if change_assign_time:
+        if assigned_orders:
+            max_time = assigned_orders[0].assign_time
+            for order in assigned_orders:
+                if order.assign_time > max_time:
+                    max_time = order.assign_time
+            assign_time = max_time
+
+    orders_id = list(set(assigned_orders_id) ^ set(completed_orders_id))
+    for order_id in orders_id:
+        db_order = db.query(models.Order).get(order_id)
+        suitable_orders.append(db_order)
+
+    suitable_orders = list(set(suitable_orders))
+
     return suitable_orders, assign_time
 
 
@@ -181,8 +208,6 @@ def update_courier(db: Session, changes: dict, courier_id: int):
         change = changes.get(field)
         if change is not None:
             if field == "regions":
-
-                # delite all regions
                 db_regions = db.query(models.CourierRegion) \
                     .filter(models.CourierRegion.courier_id == courier_id) \
                     .all()
@@ -197,8 +222,6 @@ def update_courier(db: Session, changes: dict, courier_id: int):
                     db.add(db_region)
                     db.commit()
             elif field == "working_hours":
-
-                # delite all working hours
                 db_working_hours = db.query(models.CourierWorkingHours) \
                     .filter(models.CourierWorkingHours.courier_id == courier_id) \
                     .all()
@@ -225,7 +248,6 @@ def update_courier(db: Session, changes: dict, courier_id: int):
     courier_dto.regions = get_regions_by_courier_id(db, courier_id)
     courier_dto.working_hours = get_working_hours_by_courier_id(db, courier_id)
 
-    print(courier_dto)
     return courier_dto
 
 
@@ -344,22 +366,26 @@ def order_complete(db: Session, order_info: dict):
 
     db_order = db.query(models.Order).get(order_id)
 
+    if db_order is None or db_order.courier_id != courier_id:
+        return None
     complete_time_dt = dateutil.parser.parse(complete_time)
+    if db.query(models.CompletedCourierOrder).filter(models.CompletedCourierOrder.order_id == order_id).first() is None:
 
-    create_completed_courier_order(
-        db, courier_id, order_id,
-        complete_time_dt,
-        db_order.region_id
-    )
-    earning_ratio = db_order.courier_type
-    if earning_ratio == "foot":
-        earning_ratio = 2
-    elif earning_ratio == "bike":
-        earning_ratio = 5
-    else:
-        earning_ratio = 9
+        create_completed_courier_order(
+            db, courier_id, order_id,
+            complete_time_dt,
+            db_order.region_id
+        )
 
-    calculate_courier_rating_earning(db, courier_id, earning_ratio)
+        earning_ratio = db_order.courier_type
+        if earning_ratio == "foot":
+            earning_ratio = 2
+        elif earning_ratio == "bike":
+            earning_ratio = 5
+        else:
+            earning_ratio = 9
+
+        calculate_courier_rating_earning(db, courier_id, earning_ratio)
 
     return order_id
 
