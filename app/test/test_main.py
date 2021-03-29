@@ -5,8 +5,8 @@ import re
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from sql_app.database import Base
-from sql_app.main import app, get_db
+from app.database import Base
+from app.main import app, get_db
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 

@@ -7,8 +7,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from sql_app import schemas, crud, models
-from sql_app.database import SessionLocal, engine
+from app import schemas, crud, models
+from app.database import SessionLocal, engine
 
 models.Base.metadata.create_all(bind=engine)
 
